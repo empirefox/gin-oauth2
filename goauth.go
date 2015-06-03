@@ -278,34 +278,43 @@ func Setup(config *Config) gin.HandlerFunc {
 	}
 }
 
+func (config *Config) CheckStatus(c *gin.Context, level int) (bool, int) {
+	if level == NoCheck {
+		return true, 0
+	}
+	iuser, err := c.Get(config.UserGinKey)
+	if err != nil {
+		return false, http.StatusForbidden
+	}
+	user, ok := iuser.(OauthUser)
+	if !ok {
+		return false, http.StatusInternalServerError
+	}
+	if level >= Loggedin && !user.Valid() {
+		return false, http.StatusForbidden
+	}
+	if level >= Permitted && !user.Permitted(c) {
+		return false, http.StatusUnauthorized
+	}
+	return true, 0
+}
+
 // Levels: NoCheck, Loggedin, Permitted
 func (config *Config) Check(level int) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if level == NoCheck {
+		ok, status := config.CheckStatus(c, level)
+		if ok {
 			return
 		}
-		iuser, err := c.Get(config.UserGinKey)
-		if err != nil {
-			c.Redirect(http.StatusSeeOther, config.PathLogin)
-			c.Abort()
-			return
-		}
-		user, ok := iuser.(OauthUser)
-		if !ok {
+		switch status {
+		case http.StatusInternalServerError:
 			c.String(http.StatusInternalServerError, "")
-			c.Abort()
-			return
-		}
-		if level >= Loggedin && !user.Valid() {
+		case http.StatusForbidden:
 			c.Redirect(http.StatusSeeOther, config.PathLogin)
-			c.Abort()
-			return
-		}
-		if level >= Permitted && !user.Permitted(c) {
+		case http.StatusUnauthorized:
 			c.Redirect(http.StatusSeeOther, config.PathNotPermitted)
-			c.Abort()
-			return
 		}
+		c.Abort()
 	}
 }
 
