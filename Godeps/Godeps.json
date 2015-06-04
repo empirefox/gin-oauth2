@@ -1,0 +1,62 @@
+{
+	"ImportPath": "github.com/empirefox/gin-oauth2",
+	"GoVersion": "go1.4.2",
+	"Deps": [
+		{
+			"ImportPath": "github.com/bitly/go-simplejson",
+			"Comment": "v0.4.3-30-g18db6e6",
+			"Rev": "18db6e68d8fd9cbf2e8ebe4c81a78b96fd9bf05a"
+		},
+		{
+			"ImportPath": "github.com/gin-gonic/gin",
+			"Comment": "v0.6-2-gbd2c864",
+			"Rev": "bd2c8643467007ae1be5c108306e14f1e768c10b"
+		},
+		{
+			"ImportPath": "github.com/golang/glog",
+			"Rev": "44145f04b68cf362d9c4df2182967c2275eaefed"
+		},
+		{
+			"ImportPath": "github.com/gorilla/context",
+			"Rev": "215affda49addc4c8ef7e2534915df2c8c35c6cd"
+		},
+		{
+			"ImportPath": "github.com/gorilla/securecookie",
+			"Rev": "8e98dd730fc43f1383f19615db6f2e702c9738e8"
+		},
+		{
+			"ImportPath": "github.com/gorilla/sessions",
+			"Rev": "f61c3ec2cf65d69e7efedfd4d060fe128882c951"
+		},
+		{
+			"ImportPath": "github.com/jtolds/gls",
+			"Rev": "9a4a02dbe491bef4bab3c24fd9f3087d6c4c6690"
+		},
+		{
+			"ImportPath": "github.com/julienschmidt/httprouter",
+			"Rev": "8c199fb6259ffc1af525cc3ad52ee60ba8359669"
+		},
+		{
+			"ImportPath": "github.com/mattn/go-colorable",
+			"Rev": "d67e0b7d1797975196499f79bcc322c08b9f218b"
+		},
+		{
+			"ImportPath": "github.com/smartystreets/assertions",
+			"Comment": "1.5.0-380-g4727d76",
+			"Rev": "4727d767ce8a81811c40eedc2a836c85aebb4d09"
+		},
+		{
+			"ImportPath": "github.com/smartystreets/goconvey/convey",
+			"Comment": "1.5.0-390-g7a3785c",
+			"Rev": "7a3785c3002a330211525464d402c07b2afce5a7"
+		},
+		{
+			"ImportPath": "golang.org/x/net/context",
+			"Rev": "a8c61998a557a37435f719980da368469c10bfed"
+		},
+		{
+			"ImportPath": "golang.org/x/oauth2",
+			"Rev": "ec6d5d770f531108a6464462b2201b74fcd09314"
+		}
+	]
+}
