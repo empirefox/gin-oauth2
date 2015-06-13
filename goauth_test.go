@@ -87,6 +87,26 @@ func requestAndResponse(serverUrl, method, path string, payload io.Reader) *http
 	return res
 }
 
+func requestAndResponseWithFlash(serverUrl, method, path string,
+	payload io.Reader,
+	flash *LoginFlash) *httptest.ResponseRecorder {
+
+	conf := newConf(serverUrl)
+	r := gin.Default()
+	r.Use(Setup(conf))
+	res := httptest.NewRecorder()
+	req, _ := http.NewRequest(method, path, payload)
+
+	session, err := conf.Store.Get(req, conf.SessionName)
+	if err != nil {
+		glog.Errorln(err)
+	}
+	session.AddFlash(flash, "_login_flash")
+
+	r.ServeHTTP(res, req)
+	return res
+}
+
 func saveUserToSessionMiddleware(conf *Config, u *user) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		session, err := conf.Store.Get(c.Request, conf.SessionName)
@@ -111,7 +131,8 @@ func TestConfig_authHandle(t *testing.T) {
 		Convey("should redirect to auth code url", func() {
 			res := requestAndResponse("", "GET", "/auth/github", nil)
 			So(res.Code, ShouldEqual, http.StatusSeeOther)
-			So(res.Header().Get("Location"), ShouldEqual, "/auth?client_id=CLIENT_ID&redirect_uri=REDIRECT_URL&response_type=code&scope=scope1")
+			u := res.Header().Get("Location")
+			So(u[:len(u)-8], ShouldEqual, "/auth?client_id=CLIENT_ID&redirect_uri=REDIRECT_URL&response_type=code&scope=scope1&state=")
 		})
 	})
 }
@@ -129,7 +150,9 @@ func TestConfig_authHandle_success(t *testing.T) {
 		}
 	}))
 	defer ts.Close()
-	res := requestAndResponse(ts.URL, "GET", "/auth/github?code=exchange-code", nil)
+	res := requestAndResponseWithFlash(ts.URL, "GET", "/auth/github?code=exchange-code&state=12345678", nil, &LoginFlash{
+		State: "12345678",
+	})
 	glog.Errorln(string(res.Body.Bytes()))
 	if res.Code != http.StatusSeeOther {
 		t.Errorf("Response code=%d, expectd:%d", res.Code, http.StatusSeeOther)
