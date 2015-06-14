@@ -220,6 +220,10 @@ func (config *Config) authHandle(c *gin.Context) (handled bool) {
 	if code == "" {
 		fmsg := &LoginFlash{Url: config.getOriginUrl(vs), State: uniuri.NewLen(8)}
 		session.AddFlash(fmsg, "_login_flash")
+		if err := session.Save(c.Request, c.Writer); err != nil {
+			c.String(http.StatusInternalServerError, "Cannot save session")
+			return
+		}
 
 		c.Redirect(http.StatusSeeOther, provider.AuthCodeURL(fmsg.State))
 		return
@@ -316,10 +320,12 @@ func (config *Config) CheckStatus(c *gin.Context, level int) (bool, int) {
 	}
 	iuser, err := c.Get(config.UserGinKey)
 	if err != nil {
+		glog.Infoln(err)
 		return false, http.StatusUnauthorized
 	}
 	user, ok := iuser.(OauthUser)
 	if !ok {
+		glog.Infoln("OauthUser type error")
 		return false, http.StatusInternalServerError
 	}
 	if level >= Loggedin && !user.Valid() {
