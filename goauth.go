@@ -318,9 +318,9 @@ func (config *Config) CheckStatus(c *gin.Context, level int) (bool, int) {
 	if level == NoCheck {
 		return true, 0
 	}
-	iuser, err := c.Get(config.UserGinKey)
-	if err != nil {
-		glog.Infoln(err)
+	iuser, ok := c.Get(config.UserGinKey)
+	if !ok {
+		glog.Infoln("user not found")
 		return false, http.StatusUnauthorized
 	}
 	user, ok := iuser.(OauthUser)
