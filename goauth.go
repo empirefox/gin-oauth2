@@ -247,6 +247,7 @@ func (config *Config) authHandle(c *gin.Context) (handled bool) {
 	// continue auth
 	tok, err := provider.Exchange(oauth2.NoContext, code)
 	if err != nil {
+		glog.Infoln(err)
 		c.String(http.StatusNonAuthoritativeInfo, "Auth proccess failed")
 		return
 	}
@@ -256,16 +257,19 @@ func (config *Config) authHandle(c *gin.Context) (handled bool) {
 	}
 	user, err := provider.GetAuthenticatedUser(client)
 	if err != nil {
+		glog.Infoln(err)
 		c.String(http.StatusNonAuthoritativeInfo, "Get auth user failed")
 		return
 	}
 	serial, err := json.Marshal(user)
 	if err != nil {
+		glog.Infoln(err)
 		c.String(http.StatusInternalServerError, "When Marshal user")
 		return
 	}
 	session.Values[config.SessionSerialName] = serial
 	if err = session.Save(c.Request, c.Writer); err != nil {
+		glog.Infoln(err)
 		c.String(http.StatusInternalServerError, "Cannot save session")
 		return
 	}
