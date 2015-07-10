@@ -293,6 +293,7 @@ func Setup(config *Config) gin.HandlerFunc {
 		c.Set(config.StoreGinKey, config.Store)
 
 		if config.authHandle(c) {
+			c.Abort()
 			return
 		}
 
