@@ -257,7 +257,7 @@ func (config *Config) authHandle(c *gin.Context) (handled bool) {
 	}
 	user, err := provider.GetAuthenticatedUser(client)
 	if err != nil {
-		glog.Infoln(err)
+		glog.Infoln(err, "token", tok)
 		c.String(http.StatusNonAuthoritativeInfo, "Get auth user failed")
 		return
 	}
