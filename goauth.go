@@ -40,7 +40,7 @@ type LoginFlash struct {
 	State string
 }
 
-type GetAuthenticatedUser func(client *http.Client) (OauthUser, error)
+type GetAuthenticatedUser func(tok *oauth2.Token) (OauthUser, error)
 
 type OauthUser interface {
 	OnOid(provider, oid string) error
@@ -134,8 +134,12 @@ func (config *Config) loadDefault() {
 }
 
 func (config *Config) DefaultGetAuthenticatedUser(provider *Provider) GetAuthenticatedUser {
-	return func(client *http.Client) (OauthUser, error) {
-		r, err := client.Get(provider.UserEndpoint)
+	return func(tok *oauth2.Token) (OauthUser, error) {
+		endpoint := provider.UserEndpoint
+		if strings.Contains(endpoint, "$(access_token)") {
+			endpoint = strings.Replace(endpoint, "$(access_token)", tok.AccessToken, -1)
+		}
+		r, err := provider.Client(oauth2.NoContext, tok).Get(endpoint)
 		if err != nil {
 			glog.Infoln(err)
 			return nil, err
@@ -251,11 +255,10 @@ func (config *Config) authHandle(c *gin.Context) (handled bool) {
 		c.String(http.StatusNonAuthoritativeInfo, "Auth proccess failed")
 		return
 	}
-	client := provider.Client(oauth2.NoContext, tok)
 	if provider.GetAuthenticatedUser == nil {
 		provider.GetAuthenticatedUser = config.DefaultGetAuthenticatedUser(&provider)
 	}
-	user, err := provider.GetAuthenticatedUser(client)
+	user, err := provider.GetAuthenticatedUser(tok)
 	if err != nil {
 		glog.Infoln(err, "token", tok)
 		c.String(http.StatusNonAuthoritativeInfo, "Get auth user failed")
