@@ -179,7 +179,7 @@ func TestSetup(t *testing.T) {
 			config, r, res := newRouter(ou)
 			var u *user
 			r.GET("/getuser", func(c *gin.Context) {
-				if iuser, err := c.Get(config.UserGinKey); err == nil {
+				if iuser, ok := c.Get(config.UserGinKey); ok {
 					u = iuser.(*user)
 				}
 			})
@@ -277,8 +277,8 @@ func newFakeRequest(fakeUser OauthUser, fakeLogin func(conf *Config) gin.Handler
 	var u user
 	var got = false
 	r.GET("/getuser", func(c *gin.Context) {
-		iuser, err := c.Get(conf.UserGinKey)
-		if err != nil {
+		iuser, ok := c.Get(conf.UserGinKey)
+		if !ok {
 			return
 		}
 		gu, ok := iuser.(*user)

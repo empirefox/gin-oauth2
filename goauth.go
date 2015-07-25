@@ -7,8 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"mime"
 	"net/http"
 	"net/url"
+	"os"
+	"strconv"
 	"strings"
 
 	"github.com/bitly/go-simplejson"
@@ -57,17 +60,22 @@ type Provider struct {
 	GetAuthenticatedUser GetAuthenticatedUser
 }
 
+// PathLoginFail accept var: status
 type Config struct {
 	StoreGinKey       string
 	SessionName       string
 	SessionSerialName string
+	SessionFlashKey   string
 	CookieAuthKey     []byte
 	CookieEncryptKey  []byte
 	CookieOptions     sessions.Options
 	PathLogin         string
+	PathLoginFail     string
+	PathLoginFailVar  string
 	PathLogout        string
 	PathSuccess       string
 	PathNotPermitted  string
+	Path500           string
 	OriginUrlKey      string
 	Providers         map[string]Provider
 	UserGinKey        string
@@ -91,6 +99,9 @@ func (config *Config) loadDefault() {
 	if config.SessionSerialName == "" {
 		config.SessionSerialName = "gorilla-session"
 	}
+	if config.SessionFlashKey == "" {
+		config.SessionFlashKey = "_login_flash"
+	}
 	if config.CookieAuthKey == nil {
 		config.CookieAuthKey = securecookie.GenerateRandomKey(64)
 	}
@@ -106,6 +117,12 @@ func (config *Config) loadDefault() {
 
 	if config.PathLogin == "" {
 		config.PathLogin = "/login.html"
+	}
+	if config.PathLoginFail == "" {
+		config.PathLoginFail = "/login.html"
+	}
+	if config.PathLoginFailVar == "" {
+		config.PathLoginFailVar = "err"
 	}
 	if config.PathLogout == "" {
 		config.PathLogout = "/logout"
@@ -137,6 +154,7 @@ func (config *Config) DefaultGetAuthenticatedUser(provider *Provider) GetAuthent
 	return func(tok *oauth2.Token) (OauthUser, error) {
 		endpoint := provider.UserEndpoint
 		if strings.Contains(endpoint, "$(access_token)") {
+			// if not so, some vendor may not get token
 			endpoint = strings.Replace(endpoint, "$(access_token)", tok.AccessToken, -1)
 		}
 		r, err := provider.Client(oauth2.NoContext, tok).Get(endpoint)
@@ -200,7 +218,8 @@ func (config *Config) getOriginUrl(vs url.Values) (success string) {
 	return
 }
 
-func (config *Config) authHandle(c *gin.Context) (handled bool) {
+// status 0: no error
+func (config *Config) authHandle(c *gin.Context) (handled bool, status int) {
 	requrl := c.Request.URL
 	provider, ok := config.Providers[requrl.Path]
 	if !ok {
@@ -209,72 +228,68 @@ func (config *Config) authHandle(c *gin.Context) (handled bool) {
 	handled = true
 
 	if c.Request.Method != "GET" {
-		c.String(http.StatusMethodNotAllowed, "Only accept get method")
-		return
+		glog.Infoln("Only accept get method")
+		return handled, http.StatusMethodNotAllowed
 	}
 	// do auth process and return
 	session, err := config.Store.Get(c.Request, config.SessionName)
 	if err != nil {
 		glog.Infoln("Auth session decode error, or create new session")
 	}
-	flashs := session.Flashes("_login_flash")
+	flashs := session.Flashes(config.SessionFlashKey)
 
 	vs := requrl.Query()
 	code := vs.Get("code")
 	if code == "" {
 		fmsg := &LoginFlash{Url: config.getOriginUrl(vs), State: uniuri.NewLen(8)}
-		session.AddFlash(fmsg, "_login_flash")
+		session.AddFlash(fmsg, config.SessionFlashKey)
 		if err := session.Save(c.Request, c.Writer); err != nil {
-			c.String(http.StatusInternalServerError, "Cannot save session")
-			return
+			glog.Infoln("Cannot save flash session:", err)
+			return handled, http.StatusInternalServerError
 		}
 
 		c.Redirect(http.StatusSeeOther, provider.AuthCodeURL(fmsg.State))
-		return
+		return handled, status
 	}
 
 	// validate state
 	if len(flashs) == 0 {
-		c.String(http.StatusInternalServerError, "Flash not found")
-		return
+		glog.Infoln("Flash not found")
+		return handled, http.StatusInternalServerError
 	}
 	fmsg, ok := flashs[0].(*LoginFlash)
 	if !ok {
-		c.String(http.StatusInternalServerError, "Flash assert error")
-		return
+		glog.Infoln("Flash assert error")
+		return handled, http.StatusInternalServerError
 	}
 	if vs.Get("state") != fmsg.State {
-		c.String(http.StatusBadGateway, "State not match")
-		return
+		glog.Infoln("State in flash not matched")
+		return handled, http.StatusBadGateway
 	}
 
 	// continue auth
 	tok, err := provider.Exchange(oauth2.NoContext, code)
 	if err != nil {
-		glog.Infoln(err)
-		c.String(http.StatusNonAuthoritativeInfo, "Auth proccess failed")
-		return
+		glog.Infoln("Auth exchange proccess failed, code:", code, "err:", err)
+		return handled, http.StatusNonAuthoritativeInfo
 	}
 	if provider.GetAuthenticatedUser == nil {
 		provider.GetAuthenticatedUser = config.DefaultGetAuthenticatedUser(&provider)
 	}
 	user, err := provider.GetAuthenticatedUser(tok)
 	if err != nil {
-		glog.Infoln(err, "token", tok)
-		c.String(http.StatusNonAuthoritativeInfo, "Get auth user failed")
-		return
+		glog.Infoln("Get auth user failed, token:", tok, "err:", err)
+		return handled, http.StatusNonAuthoritativeInfo
 	}
 	serial, err := json.Marshal(user)
 	if err != nil {
-		glog.Infoln(err)
-		c.String(http.StatusInternalServerError, "When Marshal user")
-		return
+		glog.Infoln("Marshal user err:", err, "user:", user)
+		return handled, http.StatusInternalServerError
 	}
 	session.Values[config.SessionSerialName] = serial
 	if err = session.Save(c.Request, c.Writer); err != nil {
-		glog.Infoln(err)
-		c.String(http.StatusInternalServerError, "Cannot save session")
-		return
+		glog.Infoln("Cannot save user to session:", err)
+		return handled, http.StatusInternalServerError
 	}
 
 	// redirect to prev url
@@ -282,7 +297,22 @@ func (config *Config) authHandle(c *gin.Context) (handled bool) {
 		fmsg.Url = config.PathSuccess
 	}
 	c.Redirect(http.StatusSeeOther, fmsg.Url)
-	return
+	return handled, 0
+}
+
+func acceptJson(c *gin.Context) bool {
+	accept := c.Request.Header.Get("Accept")
+	if accept == "" {
+		return true
+	}
+	for _, a := range strings.Split(accept, ",") {
+		mediaType, _, _ := mime.ParseMediaType(a)
+		switch mediaType {
+		case "*/*", "application/*", "application/json":
+			return true
+		}
+	}
+	return false
 }
 
 func Setup(config *Config) gin.HandlerFunc {
@@ -299,7 +329,20 @@ func Setup(config *Config) gin.HandlerFunc {
 		defer context.Clear(c.Request)
 		c.Set(config.StoreGinKey, config.Store)
 
-		if config.authHandle(c) {
+		if handled, status := config.authHandle(c); handled {
+			if status != 0 {
+				if acceptJson(c) {
+					c.JSON(status, "")
+				} else {
+					// inject status to failed page
+					c.Redirect(http.StatusSeeOther, os.Expand(config.PathLoginFail, func(s string) string {
+						if s == config.PathLoginFailVar {
+							return strconv.Itoa(status)
+						}
+						return ""
+					}))
+				}
+			}
 			c.Abort()
 			return
 		}
@@ -361,7 +404,13 @@ func (config *Config) Check(level int) gin.HandlerFunc {
 		}
 		switch status {
 		case http.StatusInternalServerError:
-			c.String(http.StatusInternalServerError, "")
+			if acceptJson(c) {
+				c.JSON(http.StatusInternalServerError, "")
+			} else if config.Path500 != "" {
+				c.Redirect(http.StatusSeeOther, config.Path500)
+			} else {
+				panic("")
+			}
 		case http.StatusUnauthorized:
 			c.Redirect(http.StatusSeeOther, config.GetLoginHref(c))
 		case http.StatusForbidden:
