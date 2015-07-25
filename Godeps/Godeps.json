@@ -8,9 +8,13 @@
 			"Rev": "18db6e68d8fd9cbf2e8ebe4c81a78b96fd9bf05a"
 		},
 		{
+			"ImportPath": "github.com/dchest/uniuri",
+			"Rev": "a64716164ed9ab199e34c152969bfb6b8748dbb9"
+		},
+		{
 			"ImportPath": "github.com/gin-gonic/gin",
-			"Comment": "v0.6-2-gbd2c864",
-			"Rev": "bd2c8643467007ae1be5c108306e14f1e768c10b"
+			"Comment": "v1.0rc1-136-gfd5d429",
+			"Rev": "fd5d4294a5d5223d55fc76d7840f4b0ad91647bb"
 		},
 		{
 			"ImportPath": "github.com/golang/glog",
@@ -22,7 +26,7 @@
 		},
 		{
 			"ImportPath": "github.com/gorilla/securecookie",
-			"Rev": "8e98dd730fc43f1383f19615db6f2e702c9738e8"
+			"Rev": "aeade84400a85c6875264ae51c7a56ecdcb61751"
 		},
 		{
 			"ImportPath": "github.com/gorilla/sessions",
@@ -33,12 +37,12 @@
 			"Rev": "9a4a02dbe491bef4bab3c24fd9f3087d6c4c6690"
 		},
 		{
-			"ImportPath": "github.com/julienschmidt/httprouter",
-			"Rev": "8c199fb6259ffc1af525cc3ad52ee60ba8359669"
+			"ImportPath": "github.com/manucorporat/sse",
+			"Rev": "fe6ea2c8e398672518ef204bf0fbd9af858d0e15"
 		},
 		{
 			"ImportPath": "github.com/mattn/go-colorable",
-			"Rev": "d67e0b7d1797975196499f79bcc322c08b9f218b"
+			"Rev": "40e4aedc8fabf8c23e040057540867186712faa5"
 		},
 		{
 			"ImportPath": "github.com/smartystreets/assertions",
@@ -52,11 +56,16 @@
 		},
 		{
 			"ImportPath": "golang.org/x/net/context",
-			"Rev": "a8c61998a557a37435f719980da368469c10bfed"
+			"Rev": "b71143c25f0aad5f54981684b715686d34c56d25"
 		},
 		{
 			"ImportPath": "golang.org/x/oauth2",
-			"Rev": "ec6d5d770f531108a6464462b2201b74fcd09314"
+			"Rev": "8914e5017ca260f2a3a1575b1e6868874050d95e"
+		},
+		{
+			"ImportPath": "gopkg.in/bluesuncorp/validator.v5",
+			"Comment": "v5.10.3",
+			"Rev": "77108103e5fd435ff31967e1a011fda801391c85"
 		}
 	]
 }
