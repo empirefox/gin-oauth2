@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"mime"
 	"net/http"
 	"net/url"
 	"os"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/bitly/go-simplejson"
 	"github.com/dchest/uniuri"
+	"github.com/empirefox/gotool/web"
 	"github.com/gin-gonic/gin"
 	"github.com/golang/glog"
 	"github.com/gorilla/context"
@@ -69,6 +69,7 @@ type Config struct {
 	CookieAuthKey     []byte
 	CookieEncryptKey  []byte
 	CookieOptions     sessions.Options
+	ClientSessionName string
 	PathLogin         string
 	PathLoginFail     string
 	PathLoginFailVar  string
@@ -113,6 +114,9 @@ func (config *Config) loadDefault() {
 	}
 	if config.CookieOptions.MaxAge == 0 {
 		config.CookieOptions.MaxAge = 86400 * 30
+	}
+	if config.ClientSessionName == "" {
+		config.ClientSessionName = "MC_OK"
 	}
 
 	if config.PathLogin == "" {
@@ -218,6 +222,10 @@ func (config *Config) getOriginUrl(vs url.Values) (success string) {
 	return
 }
 
+func (config *Config) setClientSession(c *gin.Context, authed string) {
+	http.SetCookie(c.Writer, &http.Cookie{Name: config.ClientSessionName, Value: authed})
+}
+
 // status 0: no error
 func (config *Config) authHandle(c *gin.Context) (handled bool, status int) {
 	requrl := c.Request.URL
@@ -247,6 +255,7 @@ func (config *Config) authHandle(c *gin.Context) (handled bool, status int) {
 			glog.Infoln("Cannot save flash session:", err)
 			return handled, http.StatusInternalServerError
 		}
+		config.setClientSession(c, "1")
 
 		c.Redirect(http.StatusSeeOther, provider.AuthCodeURL(fmsg.State))
 		return handled, status
@@ -291,6 +300,7 @@ func (config *Config) authHandle(c *gin.Context) (handled bool, status int) {
 		glog.Infoln("Cannot save user to session:", err)
 		return handled, http.StatusInternalServerError
 	}
+	config.setClientSession(c, "1")
 
 	// redirect to prev url
 	if fmsg.Url == "" {
@@ -298,21 +308,6 @@ func (config *Config) authHandle(c *gin.Context) (handled bool, status int) {
 	}
 	c.Redirect(http.StatusSeeOther, fmsg.Url)
 	return handled, 0
-}
-
-func acceptJson(c *gin.Context) bool {
-	accept := c.Request.Header.Get("Accept")
-	if accept == "" {
-		return true
-	}
-	for _, a := range strings.Split(accept, ",") {
-		mediaType, _, _ := mime.ParseMediaType(a)
-		switch mediaType {
-		case "*/*", "application/*", "application/json":
-			return true
-		}
-	}
-	return false
 }
 
 func Setup(config *Config) gin.HandlerFunc {
@@ -331,7 +326,7 @@ func Setup(config *Config) gin.HandlerFunc {
 
 		if handled, status := config.authHandle(c); handled {
 			if status != 0 {
-				if acceptJson(c) {
+				if web.AcceptJson(c.Request) {
 					c.JSON(status, "")
 				} else {
 					// inject status to failed page
@@ -404,7 +399,7 @@ func (config *Config) Check(level int) gin.HandlerFunc {
 		}
 		switch status {
 		case http.StatusInternalServerError:
-			if acceptJson(c) {
+			if web.AcceptJson(c.Request) {
 				c.JSON(http.StatusInternalServerError, "")
 			} else if config.Path500 != "" {
 				c.Redirect(http.StatusSeeOther, config.Path500)
@@ -432,6 +427,7 @@ func (config *Config) DeleteUserCookie(c *gin.Context) {
 	for key, _ := range session.Values {
 		delete(session.Values, key)
 	}
+	config.setClientSession(c, "")
 	if err = session.Save(c.Request, c.Writer); err != nil {
 		c.String(http.StatusInternalServerError, "Cannot change session")
 		return
