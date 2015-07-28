@@ -367,6 +367,9 @@ func (config *Config) CheckStatus(c *gin.Context, level int) (bool, int) {
 	iuser, ok := c.Get(config.UserGinKey)
 	if !ok {
 		glog.Infoln("user not found")
+		for _, cookie := range c.Request.Cookies() {
+			glog.Infoln(*cookie)
+		}
 		return false, http.StatusUnauthorized
 	}
 	user, ok := iuser.(OauthUser)
