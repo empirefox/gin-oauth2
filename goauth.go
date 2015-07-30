@@ -114,6 +114,7 @@ func (config *Config) loadDefault() {
 	}
 	if config.CookieOptions.MaxAge == 0 {
 		config.CookieOptions.MaxAge = 86400 * 30
+		config.CookieOptions.HttpOnly = true
 	}
 	if config.ClientSessionName == "" {
 		config.ClientSessionName = "MC_OK"
