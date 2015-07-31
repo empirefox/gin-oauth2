@@ -223,10 +223,6 @@ func (config *Config) getOriginUrl(vs url.Values) (success string) {
 	return
 }
 
-func (config *Config) setClientSession(c *gin.Context, authed string) {
-	http.SetCookie(c.Writer, &http.Cookie{Name: config.ClientSessionName, Value: authed})
-}
-
 // status 0: no error
 func (config *Config) authHandle(c *gin.Context) (handled bool, status int) {
 	requrl := c.Request.URL
@@ -256,7 +252,6 @@ func (config *Config) authHandle(c *gin.Context) (handled bool, status int) {
 			glog.Infoln("Cannot save flash session:", err)
 			return handled, http.StatusInternalServerError
 		}
-		config.setClientSession(c, "1")
 
 		c.Redirect(http.StatusSeeOther, provider.AuthCodeURL(fmsg.State))
 		return handled, status
@@ -296,17 +291,13 @@ func (config *Config) authHandle(c *gin.Context) (handled bool, status int) {
 		glog.Infoln("Marshal user err:", err, "user:", user)
 		return handled, http.StatusInternalServerError
 	}
+
 	session.Values[config.SessionSerialName] = serial
 	if err = session.Save(c.Request, c.Writer); err != nil {
 		glog.Infoln("Cannot save user to session:", err)
 		return handled, http.StatusInternalServerError
 	}
-	config.setClientSession(c, "1")
 
-	// redirect to prev url
-	if fmsg.Url == "" {
-		fmsg.Url = config.PathSuccess
-	}
 	c.Redirect(http.StatusSeeOther, fmsg.Url)
 	return handled, 0
 }
@@ -428,9 +419,8 @@ func (config *Config) DeleteUserCookie(c *gin.Context) {
 	for key, _ := range session.Values {
 		delete(session.Values, key)
 	}
-	config.setClientSession(c, "")
 	if err = session.Save(c.Request, c.Writer); err != nil {
-		c.String(http.StatusInternalServerError, "Cannot change session")
+		c.JSON(http.StatusInternalServerError, "Cannot change session")
 		return
 	}
 }
