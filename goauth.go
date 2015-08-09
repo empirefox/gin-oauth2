@@ -39,7 +39,16 @@ func init() {
 }
 
 type LoginFlash struct {
-	Url   string
+	// finally redirected to
+	Url string
+
+	// temporary intercept redirect path
+	// must set to provider url with param path_after_success
+	// has higher prior than config.PathAfterSuccess
+	// will append final url
+	PathAfterSuccess string
+
+	// send to provider for check
 	State string
 }
 
@@ -69,15 +78,15 @@ type Config struct {
 	CookieAuthKey     []byte
 	CookieEncryptKey  []byte
 	CookieOptions     sessions.Options
-	ClientSessionName string
 	PathLogin         string
 	PathLoginFail     string
 	PathLoginFailVar  string
 	PathLogout        string
 	PathSuccess       string
+	PathAfterSuccess  string
 	PathNotPermitted  string
 	Path500           string
-	OriginUrlKey      string
+	FromKey           string
 	Providers         map[string]Provider
 	UserGinKey        string
 	NewUserFunc       func() OauthUser
@@ -116,9 +125,6 @@ func (config *Config) loadDefault() {
 		config.CookieOptions.MaxAge = 86400 * 30
 		config.CookieOptions.HttpOnly = true
 	}
-	if config.ClientSessionName == "" {
-		config.ClientSessionName = "MC_OK"
-	}
 
 	if config.PathLogin == "" {
 		config.PathLogin = "/login.html"
@@ -138,8 +144,8 @@ func (config *Config) loadDefault() {
 	if config.PathNotPermitted == "" {
 		config.PathNotPermitted = "/403.html"
 	}
-	if config.OriginUrlKey == "" {
-		config.OriginUrlKey = "from"
+	if config.FromKey == "" {
+		config.FromKey = "from"
 	}
 	if config.UserGinKey == "" {
 		config.UserGinKey = "user"
@@ -208,12 +214,16 @@ func (config *Config) DefaultGetAuthenticatedUser(provider *Provider) GetAuthent
 }
 
 func (config *Config) getOriginUrl(vs url.Values) (success string) {
-	raw, err := url.QueryUnescape(vs.Get(config.OriginUrlKey))
+	raw, err := url.QueryUnescape(vs.Get(config.FromKey))
 	if err != nil {
 		return
 	}
 	successUrl, err := url.Parse(raw)
-	if err != nil || successUrl.Path == config.PathLogin || successUrl.Path == config.PathLogout {
+	if err != nil {
+		return
+	}
+	switch successUrl.Path {
+	case config.PathLogin, config.PathLogout, config.PathAfterSuccess, config.PathSuccess:
 		return
 	}
 	if _, ok := config.Providers[successUrl.Path]; ok {
@@ -246,7 +256,11 @@ func (config *Config) authHandle(c *gin.Context) (handled bool, status int) {
 	vs := requrl.Query()
 	code := vs.Get("code")
 	if code == "" {
-		fmsg := &LoginFlash{Url: config.getOriginUrl(vs), State: uniuri.NewLen(8)}
+		fmsg := &LoginFlash{
+			Url:              config.getOriginUrl(vs),
+			PathAfterSuccess: vs.Get("path_after_success"),
+			State:            uniuri.NewLen(8),
+		}
 		session.AddFlash(fmsg, config.SessionFlashKey)
 		if err := session.Save(c.Request, c.Writer); err != nil {
 			glog.Infoln("Cannot save flash session:", err)
@@ -298,7 +312,29 @@ func (config *Config) authHandle(c *gin.Context) (handled bool, status int) {
 		return handled, http.StatusInternalServerError
 	}
 
-	c.Redirect(http.StatusSeeOther, fmsg.Url)
+	afterPath := config.PathAfterSuccess
+	if fmsg.PathAfterSuccess != "" {
+		afterPath = fmsg.PathAfterSuccess
+	}
+
+	var dest string
+	if afterPath == "" {
+		if fmsg.Url == "" {
+			dest = config.PathSuccess
+		} else {
+			dest = fmsg.Url
+		}
+	} else {
+		if fmsg.Url == "" {
+			dest = afterPath
+		} else {
+			dest = fmt.Sprintf(`%s?%s=%s`,
+				afterPath,
+				config.FromKey,
+				url.QueryEscape(fmsg.Url))
+		}
+	}
+	c.Redirect(http.StatusSeeOther, dest)
 	return handled, 0
 }
 
@@ -318,7 +354,7 @@ func Setup(config *Config) gin.HandlerFunc {
 
 		if handled, status := config.authHandle(c); handled {
 			if status != 0 {
-				if web.AcceptJson(c.Request) {
+				if web.RequestJson(c.Request) {
 					c.JSON(status, "")
 				} else {
 					// inject status to failed page
@@ -378,7 +414,7 @@ func (config *Config) CheckStatus(c *gin.Context, level int) (bool, int) {
 func (config *Config) GetLoginHref(c *gin.Context) string {
 	return fmt.Sprintf(`%s?%s=%s`,
 		config.PathLogin,
-		config.OriginUrlKey,
+		config.FromKey,
 		url.QueryEscape(c.Request.URL.String()))
 }
 
@@ -391,7 +427,7 @@ func (config *Config) Check(level int) gin.HandlerFunc {
 		}
 		switch status {
 		case http.StatusInternalServerError:
-			if web.AcceptJson(c.Request) {
+			if web.RequestJson(c.Request) {
 				c.JSON(http.StatusInternalServerError, "")
 			} else if config.Path500 != "" {
 				c.Redirect(http.StatusSeeOther, config.Path500)
