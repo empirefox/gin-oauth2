@@ -199,10 +199,16 @@ func (config *Config) DefaultGetAuthenticatedUser(provider *Provider) GetAuthent
 			glog.Errorln(err)
 			return nil, err
 		}
-		oid, err := js.GetPath(strings.Split(provider.OidJsonPath, ".")...).String()
-		if err != nil {
-			glog.Errorln(err)
-			return nil, err
+		ioid := js.GetPath(strings.Split(provider.OidJsonPath, ".")...).Interface()
+		var oid string
+		switch id := ioid.(type) {
+		case string:
+			oid = id
+		case float64:
+			oid = strconv.FormatInt(int64(id), 10)
+		default:
+			glog.Errorln(JsonFormatErr)
+			return nil, JsonFormatErr
 		}
 		u := config.NewUserFunc()
 		if err = u.OnOid(provider.Name, oid); err != nil {
