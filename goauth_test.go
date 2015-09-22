@@ -1,21 +1,20 @@
 package goauth
 
 import (
+	"bytes"
 	"encoding/json"
-	"errors"
 	"flag"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"golang.org/x/oauth2"
 
+	"github.com/dgrijalva/jwt-go"
 	"github.com/gin-gonic/gin"
 	"github.com/golang/glog"
-	"github.com/gorilla/securecookie"
-	"github.com/gorilla/sessions"
-	. "github.com/smartystreets/goconvey/convey"
 )
 
 func init() {
@@ -24,29 +23,44 @@ func init() {
 }
 
 type user struct {
-	P bool `json:",omitempty"`
-	V bool `json:",omitempty"`
+	Provider string `json:",omitempty"`
+	Oid      string `json:",omitempty"`
+	V        bool   `json:",omitempty"`
 }
 
-func (u *user) OnOid(provider, oid string) error {
-	if oid == "OAUTH_ID" {
-		u.P = true
-		u.V = true
-		return nil
-	}
-	return errors.New("oid not found")
+func (u *user) GetOid() (provider, oid string) {
+	return u.Provider, u.Oid
 }
 
-func (u user) Permitted(c *gin.Context) bool {
-	return u.P
+func (u *user) OnLogin(provider, oid, name, pic string) error {
+	u.Provider = provider
+	u.Oid = oid
+	u.V = true
+	return nil
+}
+
+func (u *user) OnLink(existed interface{}, provider, oid, name, pic string) error {
+	*existed.(*user) = user{Provider: provider, Oid: oid, V: true}
+	return nil
+}
+
+func (u *user) Find(provider, oid string) error {
+	u.Provider = provider
+	u.Oid = oid
+	u.V = true
+	return nil
 }
 
 func (u user) Valid() bool {
 	return u.V
 }
 
+func (u user) Info() interface{} {
+	return u
+}
+
 func factoryFunc() OauthUser {
-	return &user{P: false, V: false}
+	return &user{V: false}
 }
 
 func newConf(url string) *Config {
@@ -54,6 +68,7 @@ func newConf(url string) *Config {
 	config := &Config{
 		Providers: map[string]Provider{
 			"/auth/github": Provider{
+				Name: "github",
 				Config: oauth2.Config{
 					ClientID:     "CLIENT_ID",
 					ClientSecret: "CLIENT_SECRET",
@@ -65,14 +80,17 @@ func newConf(url string) *Config {
 					},
 				},
 				UserEndpoint: url + "/user",
-				OidJsonPath:  "oid",
+				JsonPathOid:  "oid",
 			},
 		},
 		NewUserFunc: factoryFunc,
-	}
-	config.Store = &sessions.CookieStore{
-		Codecs:  securecookie.CodecsFromPairs(securecookie.GenerateRandomKey(1)),
-		Options: &config.CookieOptions,
+		SignAlg:     "HS256",
+		FindSignKey: func() (string, interface{}) {
+			return "kid", []byte("hmac-sercet")
+		},
+		FindVerifyKey: func(token *jwt.Token) (interface{}, error) {
+			return []byte("hmac-sercet"), nil
+		},
 	}
 	return config
 }
@@ -80,61 +98,11 @@ func newConf(url string) *Config {
 func requestAndResponse(serverUrl, method, path string, payload io.Reader) *httptest.ResponseRecorder {
 	conf := newConf(serverUrl)
 	r := gin.Default()
-	r.Use(Setup(conf))
+	r.Use(Middleware(conf))
 	res := httptest.NewRecorder()
 	req, _ := http.NewRequest(method, path, payload)
 	r.ServeHTTP(res, req)
 	return res
-}
-
-func requestAndResponseWithFlash(serverUrl, method, path string,
-	payload io.Reader,
-	flash *LoginFlash) *httptest.ResponseRecorder {
-
-	conf := newConf(serverUrl)
-	r := gin.Default()
-	r.Use(Setup(conf))
-	res := httptest.NewRecorder()
-	req, _ := http.NewRequest(method, path, payload)
-
-	session, err := conf.Store.Get(req, conf.SessionName)
-	if err != nil {
-		glog.Errorln(err)
-	}
-	session.AddFlash(flash, "_login_flash")
-
-	r.ServeHTTP(res, req)
-	return res
-}
-
-func saveUserToSessionMiddleware(conf *Config, u *user) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		session, err := conf.Store.Get(c.Request, conf.SessionName)
-		if err != nil {
-			glog.Errorln(err)
-		}
-		serial, err := json.Marshal(u)
-		if err != nil {
-			c.String(http.StatusInternalServerError, err.Error())
-			return
-		}
-		session.Values[conf.SessionSerialName] = serial
-	}
-}
-
-func TestConfig_authHandle(t *testing.T) {
-	Convey("authHandle", t, func() {
-		Convey("should reject non-get method", func() {
-			res := requestAndResponse("", "POST", "/auth/github", nil)
-			So(res.Code, ShouldEqual, http.StatusMethodNotAllowed)
-		})
-		Convey("should redirect to auth code url", func() {
-			res := requestAndResponse("", "GET", "/auth/github", nil)
-			So(res.Code, ShouldEqual, http.StatusSeeOther)
-			u := res.Header().Get("Location")
-			So(u[:len(u)-8], ShouldEqual, "/auth?client_id=CLIENT_ID&redirect_uri=REDIRECT_URL&response_type=code&scope=scope1&state=")
-		})
-	})
 }
 
 // Do not use goconvey or it will not pass!
@@ -150,180 +118,48 @@ func TestConfig_authHandle_success(t *testing.T) {
 		}
 	}))
 	defer ts.Close()
-	res := requestAndResponseWithFlash(ts.URL, "GET", "/auth/github?code=exchange-code&state=12345678", nil, &LoginFlash{
-		State: "12345678",
-	})
-	glog.Errorln(string(res.Body.Bytes()))
-	if res.Code != http.StatusSeeOther {
-		t.Errorf("Response code=%d, expectd:%d", res.Code, http.StatusSeeOther)
+	res := requestAndResponse(ts.URL, "POST", "/auth/github", strings.NewReader(`{"code":"exchange-code"}`))
+	if res.Code != http.StatusOK {
+		t.Errorf("Response code=%d, expectd:%d", res.Code, http.StatusOK)
 	}
-	if res.Header().Get("Location") != "/" {
-		t.Errorf("Redirect url=(%s), expectd:(%s)", res.Header().Get("Location"), "/")
+	info, _ := json.Marshal(user{Provider: "github", Oid: "OAUTH_ID", V: true})
+	gotInfo := res.Body.Bytes()
+	if !bytes.Contains(gotInfo, info) {
+		t.Errorf("Response should contains right user info, but got:%s", gotInfo)
 	}
 }
 
-func newRouter(u *user) (*Config, *gin.Engine, *httptest.ResponseRecorder) {
+func TestMiddleware(t *testing.T) {
 	conf := newConf("")
 	r := gin.Default()
-	if u != nil {
-		r.Use(saveUserToSessionMiddleware(conf, u))
-	}
-	r.Use(Setup(conf))
-	return conf, r, httptest.NewRecorder()
-}
-
-func TestSetup(t *testing.T) {
-	Convey("Setup", t, func() {
-		Convey("should parse user and set to gin context", func() {
-			ou := &user{true, false}
-			config, r, res := newRouter(ou)
-			var u *user
-			r.GET("/getuser", func(c *gin.Context) {
-				if iuser, ok := c.Get(config.UserGinKey); ok {
-					u = iuser.(*user)
-				}
-			})
-			req, _ := http.NewRequest("GET", "/getuser", nil)
-			r.ServeHTTP(res, req)
-			So(u, ShouldResemble, ou)
-		})
+	r.Use(Middleware(conf))
+	var u *user
+	r.GET("/secure", conf.MustBindUser, func(c *gin.Context) {
+		u = c.Keys[conf.GinUserKey].(*user)
 	})
-}
 
-func TestConfig_Check(t *testing.T) {
-	Convey("Check", t, func() {
-		Convey("should accept valid user", func() {
-			u := &user{false, true}
-			conf, r, res := newRouter(u)
-			checked := r.Group("/admin", conf.Check(Loggedin))
-			executed := false
-			checked.GET("/getuser", func(c *gin.Context) {
-				executed = true
-				c.String(http.StatusOK, "ok")
-			})
-			req, _ := http.NewRequest("GET", "/admin/getuser", nil)
-			r.ServeHTTP(res, req)
-			So(res.Header().Get("Location"), ShouldEqual, "")
-			So(res.Code, ShouldEqual, http.StatusOK)
-			So(executed, ShouldBeTrue)
-		})
-		Convey("should reject invalid user", func() {
-			u := &user{true, false}
-			conf, r, res := newRouter(u)
-			checked := r.Group("/admin", conf.Check(Loggedin))
-			executed := false
-			checked.GET("/getuser", func(c *gin.Context) {
-				executed = true
-			})
-			req, _ := http.NewRequest("GET", "/admin/getuser", nil)
-			r.ServeHTTP(res, req)
-			So(executed, ShouldBeFalse)
-		})
-		Convey("should accept permitted user", func() {
-			u := &user{true, true}
-			conf, r, res := newRouter(u)
-			checked := r.Group("/admin", conf.Check(Permitted))
-			executed := false
-			checked.GET("/getuser", func(c *gin.Context) {
-				executed = true
-			})
-			req, _ := http.NewRequest("GET", "/admin/getuser", nil)
-			r.ServeHTTP(res, req)
-			So(executed, ShouldBeTrue)
-		})
-		Convey("should reject non-permitted user", func() {
-			u := &user{false, true}
-			conf, r, res := newRouter(u)
-			checked := r.Group("/admin", conf.Check(Permitted))
-			executed := false
-			checked.GET("/getuser", func(c *gin.Context) {
-				executed = true
-			})
-			req, _ := http.NewRequest("GET", "/admin/getuser", nil)
-			r.ServeHTTP(res, req)
-			So(executed, ShouldBeFalse)
-		})
-	})
-}
-
-func TestConfig_DeleteUserCookie(t *testing.T) {
-	Convey("DeleteUserCookie", t, func() {
-		Convey("should log the user out", func() {
-			u := &user{true, true}
-			config, r, res := newRouter(u)
-			executedBefore := false
-			executedAfter := false
-			r.GET("/getuser", config.Check(Permitted), func(c *gin.Context) {
-				executedBefore = true
-			}, config.DefaultLogout, config.Check(Permitted), func(c *gin.Context) {
-				executedAfter = true
-			})
-			req, _ := http.NewRequest("GET", "/getuser", nil)
-			r.ServeHTTP(res, req)
-			So(executedBefore, ShouldBeTrue)
-			So(executedAfter, ShouldBeFalse)
-		})
-	})
-}
-
-func newFakeRequest(fakeUser OauthUser, fakeLogin func(conf *Config) gin.HandlerFunc) *user {
-	conf := newConf("")
-	conf.FakeUser = fakeUser
-	if fakeLogin != nil {
-		conf.FakeLogin = fakeLogin(conf)
-	}
-	r := gin.Default()
-	r.Use(Setup(conf))
-	var u user
-	var got = false
-	r.GET("/getuser", func(c *gin.Context) {
-		iuser, ok := c.Get(conf.UserGinKey)
-		if !ok {
-			return
-		}
-		gu, ok := iuser.(*user)
-		if !ok {
-			return
-		}
-		glog.Infoln("got user:", gu)
-		u = *gu
-		got = true
-	})
 	res := httptest.NewRecorder()
-	req, _ := http.NewRequest("GET", "/getuser", nil)
+	req, _ := http.NewRequest("GET", "/secure", nil)
+	req.Header.Set("Authorization", "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJvaWQiOiJPQVVUSF9JRCIsInByZCI6ImdpdGh1YjIifQ.c33cisU8gp_i2G2U7oUI0pRxFRLRkxy0667VjkX2mi4")
 	r.ServeHTTP(res, req)
-	if got {
-		return &u
+	if res.Code == http.StatusOK {
+		t.Errorf("Non-authed request should be rejected, but got:%d", res.Code)
 	}
-	return nil
-}
-
-func fakeLogin(fakeUser *user) func(conf *Config) gin.HandlerFunc {
-	return func(conf *Config) gin.HandlerFunc {
-		return func(c *gin.Context) {
-			c.Set(conf.UserGinKey, fakeUser)
-		}
+	if u != nil {
+		t.Errorf("Non-authed request should be rejected")
 	}
-}
 
-func TestFakeOauth(t *testing.T) {
-	Convey("FakeUser", t, func() {
-		Convey("should set user to context", func() {
-			fakeUser := &user{true, false}
-			u := newFakeRequest(fakeUser, nil)
-			So(u, ShouldResemble, fakeUser)
-		})
-		Convey("should set user to context ignore fakeLogin", func() {
-			fakeUser := &user{false, true}
-			u := newFakeRequest(fakeUser, fakeLogin(&user{true, true}))
-			So(u, ShouldResemble, fakeUser)
-		})
-	})
-	Convey("FakeLogin", t, func() {
-		Convey("should set user to context", func() {
-			fakeUser := &user{false, true}
-			u := newFakeRequest(nil, fakeLogin(fakeUser))
-			So(u, ShouldResemble, fakeUser)
-		})
-	})
+	res = httptest.NewRecorder()
+	req, _ = http.NewRequest("GET", "/secure", nil)
+	req.Header.Set("Authorization", "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJvaWQiOiJPQVVUSF9JRCIsInByZCI6ImdpdGh1YiJ9.c33cisU8gp_i2G2U7oUI0pRxFRLRkxy0667VjkX2mi4")
+	r.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Errorf("Authed request should be accepted, but got:%d", res.Code)
+	}
+	if u == nil {
+		t.Errorf("Authed request should be accepted")
+	}
+	if u.Provider != "github" || u.Oid != "OAUTH_ID" {
+		t.Errorf("Claims should contain correct info, but got:%v", u)
+	}
 }
