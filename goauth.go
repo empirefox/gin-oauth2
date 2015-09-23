@@ -18,10 +18,12 @@ import (
 )
 
 var (
-	ErrJsonFmt      = errors.New("Json format error")
-	ErrNoKid        = errors.New("Kid not found")
-	ErrLinkSelf     = errors.New("There is already a same account that belongs to you")
-	ErrInvalideUser = errors.New("User is invalide")
+	ErrJsonFmt       = errors.New("Json format error")
+	ErrNoKid         = errors.New("Kid not found")
+	ErrLinkSelf      = errors.New("There is already a same account that belongs to you")
+	ErrFindUser      = errors.New("Cannot find user")
+	ErrInvalideUser  = errors.New("User is invalide")
+	ErrInvalideToken = errors.New("Token is invalide")
 )
 
 type GetAuthedUserJson func(tok *oauth2.Token) (*simplejson.Json, error)
@@ -35,10 +37,12 @@ type OauthUser interface {
 	Valid() bool
 }
 
+// Config.Unlink require this
 type Unlinkable interface {
 	Unlink(prd string) error
 }
 
+// Config.Logoff require this
 type Logoffable interface {
 	Logoff() error
 }
@@ -196,6 +200,8 @@ func (config *Config) authHandle(c *gin.Context) error {
 	return nil
 }
 
+// Middleware proccess Login related logic.
+// It does not block the user handler, just try to retrieve Token.Claims.
 func Middleware(config *Config) gin.HandlerFunc {
 	if config == nil {
 		panic("goauth config is nil")
@@ -221,7 +227,9 @@ func Middleware(config *Config) gin.HandlerFunc {
 	}
 }
 
-// Temp tolerate panic
+// Unlink will proxy to OauthUser.Unlink.
+// OauthUser must implement Unlinkable. Following Config.Middleware when using.
+// Temp tolerate panic.
 func (config *Config) Unlink(c *gin.Context) {
 	js, err := simplejson.NewFromReader(c.Request.Body)
 	if err != nil {
@@ -240,6 +248,8 @@ func (config *Config) Unlink(c *gin.Context) {
 	c.AbortWithStatus(http.StatusOK)
 }
 
+// Logoff will proxy to OauthUser.Logoff.
+// OauthUser must implement Logoffable. Following Config.Middleware when using.
 func (config *Config) Logoff(c *gin.Context) {
 	u, ok := c.Get(config.GinUserKey)
 	if !ok {
@@ -253,6 +263,7 @@ func (config *Config) Logoff(c *gin.Context) {
 	c.AbortWithStatus(http.StatusOK)
 }
 
+// NewToken generate {token,user} json
 func (config *Config) NewToken(u OauthUser) (gin.H, error) {
 	prd, oid := u.GetOid()
 	kid, signKey := config.FindSignKey()
@@ -269,22 +280,48 @@ func (config *Config) NewToken(u OauthUser) (gin.H, error) {
 	return gin.H{"token": tokenString, "user": u.Info()}, nil
 }
 
-func (config *Config) BindUser(c *gin.Context) {
-	obj, ok := c.Get(config.GinClaimsKey)
-	if !ok {
-		return
-	}
-	claims, ok := obj.(map[string]interface{})
-	if !ok {
-		return
-	}
+func (config *Config) retrieveUser(user OauthUser, claims map[string]interface{}) error {
 	prd, ok1 := claims["prd"].(string)
 	oid, ok2 := claims["oid"].(string)
 	if !ok1 || !ok2 {
+		return ErrInvalideToken
+	}
+	if err := user.Find(prd, oid); err != nil {
+		return ErrFindUser
+	}
+	return nil
+}
+
+func (config *Config) retrieveClaims(c *gin.Context) (claims map[string]interface{}, ok bool) {
+	obj, exist := c.Get(config.GinClaimsKey)
+	if !exist {
+		return nil, false
+	}
+	claims, ok = obj.(map[string]interface{})
+	return
+}
+
+// Verify parse token then query the user, it dose not create a new one.
+// Useful when using websocket.
+func (config *Config) Verify(user OauthUser, token []byte) error {
+	t, err := jwt.Parse(string(token), config.FindVerifyKey)
+	if err != nil {
+		return err
+	}
+	if !t.Valid {
+		return ErrInvalideToken
+	}
+	return config.retrieveUser(user, t.Claims)
+}
+
+// BindUser silently bind token to user. Combined with Middleware.
+func (config *Config) BindUser(c *gin.Context) {
+	claims, ok := config.retrieveClaims(c)
+	if !ok {
 		return
 	}
 	u := config.NewUserFunc()
-	if err := u.Find(prd, oid); err != nil {
+	if err := config.retrieveUser(u, claims); err != nil {
 		return
 	}
 	if !u.Valid() {
@@ -294,25 +331,16 @@ func (config *Config) BindUser(c *gin.Context) {
 	c.Set(config.GinUserKey, u)
 }
 
+// MustBindUser bind token to user. It will block the next handler when user is invalid.
+// Combined with Middleware.
 func (config *Config) MustBindUser(c *gin.Context) {
-	obj, ok := c.Get(config.GinClaimsKey)
+	claims, ok := config.retrieveClaims(c)
 	if !ok {
 		c.AbortWithStatus(http.StatusForbidden)
-		return
-	}
-	claims, ok := obj.(map[string]interface{})
-	if !ok {
-		c.AbortWithStatus(http.StatusForbidden)
-		return
-	}
-	prd, ok1 := claims["prd"].(string)
-	oid, ok2 := claims["oid"].(string)
-	if !ok1 || !ok2 {
-		c.AbortWithStatus(http.StatusExpectationFailed)
 		return
 	}
 	u := config.NewUserFunc()
-	if err := u.Find(prd, oid); err != nil {
+	if err := config.retrieveUser(u, claims); err != nil {
 		c.AbortWithError(http.StatusUnauthorized, err)
 		return
 	}
