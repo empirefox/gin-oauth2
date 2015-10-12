@@ -180,6 +180,13 @@ func (config *Config) authHandle(c *gin.Context) error {
 	}
 	// continue auth
 	provider := config.Providers[c.Request.URL.Path]
+	if provider.RedirectURL == "" {
+		redirectUri, err := js.Get("redirectUri").String()
+		if err != nil {
+			return err
+		}
+		provider.RedirectURL = redirectUri
+	}
 	tok, err := provider.Exchange(oauth2.NoContext, code)
 	if err != nil {
 		return err
