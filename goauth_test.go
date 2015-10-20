@@ -10,9 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"golang.org/x/oauth2"
-
 	"github.com/dgrijalva/jwt-go"
+
 	"github.com/gin-gonic/gin"
 	"github.com/golang/glog"
 )
@@ -65,24 +64,13 @@ func factoryFunc() OauthUser {
 
 func newConf(url string) *Config {
 	glog.Infoln("from server:", url)
+	ProviderPresets["github2"] = ProviderPreset{
+		TokenURL:     url + "/token",
+		UserEndpoint: url + "/user",
+		JsonPathOid:  "oid",
+	}
 	config := &Config{
-		Providers: map[string]Provider{
-			"/auth/github": Provider{
-				Name: "github",
-				Config: oauth2.Config{
-					ClientID:     "CLIENT_ID",
-					ClientSecret: "CLIENT_SECRET",
-					RedirectURL:  "REDIRECT_URL",
-					Scopes:       []string{"scope1"},
-					Endpoint: oauth2.Endpoint{
-						AuthURL:  url + "/auth",
-						TokenURL: url + "/token",
-					},
-				},
-				UserEndpoint: url + "/user",
-				JsonPathOid:  "oid",
-			},
-		},
+		Origin:      url,
 		NewUserFunc: factoryFunc,
 		SignAlg:     "HS256",
 		FindSignKey: func() (string, interface{}) {
@@ -91,6 +79,10 @@ func newConf(url string) *Config {
 		FindVerifyKey: func(token *jwt.Token) (interface{}, error) {
 			return []byte("hmac-sercet"), nil
 		},
+	}
+	config.loadDefault()
+	if err := config.AddProvider("github2", "/auth/github2", "CLIENT_ID", "CLIENT_SECRET"); err != nil {
+		glog.Fatalln(err)
 	}
 	return config
 }
@@ -118,11 +110,11 @@ func TestConfig_authHandle_success(t *testing.T) {
 		}
 	}))
 	defer ts.Close()
-	res := requestAndResponse(ts.URL, "POST", "/auth/github", strings.NewReader(`{"code":"exchange-code"}`))
+	res := requestAndResponse(ts.URL, "POST", "/auth/github2", strings.NewReader(`{"code":"exchange-code"}`))
 	if res.Code != http.StatusOK {
 		t.Errorf("Response code=%d, expectd:%d", res.Code, http.StatusOK)
 	}
-	info, _ := json.Marshal(user{Provider: "github", Oid: "OAUTH_ID", V: true})
+	info, _ := json.Marshal(user{Provider: "github2", Oid: "OAUTH_ID", V: true})
 	gotInfo := res.Body.Bytes()
 	if !bytes.Contains(gotInfo, info) {
 		t.Errorf("Response should contains right user info, but got:%s", gotInfo)
@@ -159,7 +151,7 @@ func TestMiddleware(t *testing.T) {
 	if u == nil {
 		t.Errorf("Authed request should be accepted")
 	}
-	if u.Provider != "github" || u.Oid != "OAUTH_ID" {
+	if u.Provider != "github2" || u.Oid != "OAUTH_ID" {
 		t.Errorf("Claims should contain correct info, but got:%v", u)
 	}
 }

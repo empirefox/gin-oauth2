@@ -1,11 +1,10 @@
 package goauth
 
 import (
-	"bytes"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -26,8 +25,6 @@ var (
 	ErrInvalideToken = errors.New("Token is invalide")
 )
 
-type GetAuthedUserJson func(tok *oauth2.Token) (*simplejson.Json, error)
-
 type OauthUser interface {
 	GetOid() (provider, oid string)
 	OnLogin(provider, oid, name, pic string) error
@@ -47,19 +44,16 @@ type Logoffable interface {
 	Logoff() error
 }
 
-// priority: GetAuthedUserJson > Endpoint
 type Provider struct {
-	oauth2.Config
+	ProviderPreset
+	*oauth2.Config
 	Name              string
-	UserEndpoint      string
-	JsonPathOid       string
-	JsonPathName      string
-	JsonPathPic       string
 	GetAuthedUserJson GetAuthedUserJson
 }
 
 type Config struct {
 	Providers    map[string]Provider
+	Origin       string
 	GinClaimsKey string
 	GinUserKey   string
 	NewUserFunc  func() OauthUser
@@ -73,6 +67,9 @@ type Config struct {
 func (config *Config) loadDefault() {
 	if config.NewUserFunc == nil {
 		panic("NewUserFunc must be set")
+	}
+	if config.Providers == nil {
+		config.Providers = make(map[string]Provider, 0)
 	}
 	if config.GinClaimsKey == "" {
 		config.GinClaimsKey = "claims"
@@ -93,36 +90,29 @@ func (config *Config) loadDefault() {
 	}
 }
 
-func (config *Config) DefaultGetAuthedUserJson(provider *Provider) GetAuthedUserJson {
-	return func(tok *oauth2.Token) (*simplejson.Json, error) {
-		// 1. Send request with access_token if needed
-		endpoint := provider.UserEndpoint
-		if strings.Contains(endpoint, "$(access_token)") {
-			// add this for some broken vendors
-			endpoint = strings.Replace(endpoint, "$(access_token)", tok.AccessToken, -1)
-		}
-		r, err := provider.Client(oauth2.NoContext, tok).Get(endpoint)
-		if err != nil {
-			return nil, err
-		}
-		// 2. Extract json obj
-		raw, _ := ioutil.ReadAll(r.Body)
-		defer r.Body.Close()
-		glog.Infof("Userinfo:%s\n", raw)
-		// escape jsonp callback
-		index := bytes.IndexAny(raw, "{(")
-		if index == -1 {
-			return nil, ErrJsonFmt
-		}
-		if raw[index] == '(' {
-			last := bytes.LastIndex(raw, []byte{')'})
-			if last == -1 || last < index {
-				return nil, ErrJsonFmt
-			}
-			raw = raw[index+1 : last]
-		}
-		return simplejson.NewJson(raw)
+func (config *Config) AddProvider(Name, Path, ClientID, ClientSecret string) error {
+	preset, ok := ProviderPresets[Name]
+	if !ok {
+		return errors.New(fmt.Sprintf("Provider %s is not supported!\n", Name))
 	}
+	if config.Providers == nil {
+		config.Providers = make(map[string]Provider, 0)
+	}
+	oconfig := &oauth2.Config{
+		ClientID:     ClientID,
+		ClientSecret: ClientSecret,
+		RedirectURL:  config.Origin + preset.RedirectEnd,
+		Endpoint: oauth2.Endpoint{
+			TokenURL: preset.TokenURL,
+		},
+	}
+	config.Providers[Path] = Provider{
+		Name:              Name,
+		ProviderPreset:    preset,
+		Config:            oconfig,
+		GetAuthedUserJson: preset.GetUserJsonFactory(oconfig),
+	}
+	return nil
 }
 
 func jsGetPath(js *simplejson.Json, path string) *simplejson.Json {
@@ -130,41 +120,27 @@ func jsGetPath(js *simplejson.Json, path string) *simplejson.Json {
 }
 
 func (config *Config) getAuthedUser(provider *Provider, c *gin.Context, tok *oauth2.Token) (OauthUser, error) {
-	// 1. Get user json obj
-	if provider.GetAuthedUserJson == nil {
-		provider.GetAuthedUserJson = config.DefaultGetAuthedUserJson(provider)
-	}
-	js, err := provider.GetAuthedUserJson(tok)
+	// 1. Get user jsons
+	jss, err := provider.GetAuthedUserJson(tok)
 	if err != nil {
 		return nil, err
 	}
-	// 2. Get oid,name,pic
-	ioid := jsGetPath(js, provider.JsonPathOid).Interface()
-	var oid string
-	switch id := ioid.(type) {
-	case string:
-		oid = id
-	case float64:
-		oid = strconv.FormatInt(int64(id), 36)
-	default:
-		return nil, ErrJsonFmt
-	}
-	name, _ := jsGetPath(js, provider.JsonPathName).String()
-	pic, _ := jsGetPath(js, provider.JsonPathPic).String()
-	if name == "" {
-		name = provider.Name + " User"
+	// 2. Get user info
+	info, err := provider.ParseUserInfo(tok, jss)
+	if err != nil {
+		return nil, err
 	}
 	expected := config.NewUserFunc()
 	// 3. Link to exist user if already authed
 	if u, ok := c.Get(config.GinUserKey); ok {
 		existed := u.(OauthUser)
-		if prd, eid := existed.GetOid(); prd == provider.Name && eid == oid {
+		if prd, eid := existed.GetOid(); prd == provider.Name && eid == info.Oid {
 			return nil, ErrLinkSelf
 		}
-		return expected, expected.OnLink(existed, provider.Name, oid, name, pic)
+		return expected, expected.OnLink(existed, provider.Name, info.Oid, info.Name, info.Picture)
 	}
 	// 4. Create a new user or return an existing one
-	return expected, expected.OnLogin(provider.Name, oid, name, pic)
+	return expected, expected.OnLogin(provider.Name, info.Oid, info.Name, info.Picture)
 }
 
 func (config *Config) authHandle(c *gin.Context) error {
