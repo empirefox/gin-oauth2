@@ -164,6 +164,8 @@ func (preset *ProviderPreset) ParseUserInfo(tok *oauth2.Token, jss []*simplejson
 // almost from satellizer
 var ProviderPresets = map[string]ProviderPreset{
 	"qq": {
+		// must add to brokenAuthHeaderProviders
+		// must add text/html to token.go
 		TokenURL:       "https://graph.qq.com/oauth2.0/token",
 		OpenIdEndpoint: "https://graph.qq.com/oauth2.0/me?access_token=${access_token}",
 		UserEndpoint:   "https://graph.qq.com/user/get_user_info?access_token=${access_token}&oauth_consumer_key=${client_id}&openid=${openid}",
@@ -172,6 +174,7 @@ var ProviderPresets = map[string]ProviderPreset{
 		JsonPathPic:    "figureurl_qq_1",
 	},
 	"baidu": {
+		// must add to brokenAuthHeaderProviders
 		TokenURL:     "https://openapi.baidu.com/oauth/2.0/token",
 		UserEndpoint: "https://openapi.baidu.com/rest/2.0/passport/users/getLoggedInUser?access_token=${access_token}",
 		JsonPathOid:  "uid",
