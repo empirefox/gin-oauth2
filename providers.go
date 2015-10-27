@@ -163,6 +163,13 @@ func (preset *ProviderPreset) ParseUserInfo(tok *oauth2.Token, jss []*simplejson
 
 // almost from satellizer
 var ProviderPresets = map[string]ProviderPreset{
+	"douban": {
+		TokenURL:     "https://www.douban.com/service/auth2/token",
+		UserEndpoint: "https://api.douban.com/v2/user/~me",
+		JsonPathOid:  "id",
+		JsonPathName: "name",
+		JsonPathPic:  "avatar",
+	},
 	"qq": {
 		// must add to brokenAuthHeaderProviders
 		// must add text/html to token.go
