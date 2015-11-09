@@ -197,8 +197,8 @@ var ProviderPresets = map[string]ProviderPreset{
 		JsonPathPic:  "picture",
 	},
 	"facebook": {
-		TokenURL:     "https://graph.facebook.com/v2.3/oauth/access_token",
-		UserEndpoint: "https://graph.facebook.com/v2.3/me?access_token=${access_token}",
+		TokenURL:     "https://graph.facebook.com/v2.5/oauth/access_token",
+		UserEndpoint: "https://graph.facebook.com/v2.5/me?access_token=${access_token}",
 		JsonPathOid:  "id",
 		JsonPathName: "name",
 		RedirectEnd:  "/",
