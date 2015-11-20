@@ -15,6 +15,11 @@ import (
 	"golang.org/x/oauth2/linkedin"
 )
 
+func init() {
+	oauth2.RegisterBrokenAuthHeaderProvider("https://graph.qq.com/")
+	oauth2.RegisterBrokenAuthHeaderProvider("https://openapi.baidu.com/")
+}
+
 type GetAuthedUserJson func(tok *oauth2.Token) (jss []*simplejson.Json, err error)
 
 type userInfo struct {

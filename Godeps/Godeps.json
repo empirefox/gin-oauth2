@@ -1,40 +1,29 @@
 {
 	"ImportPath": "github.com/empirefox/gin-oauth2",
-	"GoVersion": "go1.4.2",
+	"GoVersion": "go1.5.1",
 	"Deps": [
 		{
 			"ImportPath": "github.com/bitly/go-simplejson",
-			"Comment": "v0.4.3-30-g18db6e6",
-			"Rev": "18db6e68d8fd9cbf2e8ebe4c81a78b96fd9bf05a"
+			"Comment": "v0.5.0",
+			"Rev": "aabad6e819789e569bd6aabf444c935aa9ba1e44"
 		},
 		{
 			"ImportPath": "github.com/dchest/uniuri",
 			"Rev": "a64716164ed9ab199e34c152969bfb6b8748dbb9"
 		},
 		{
+			"ImportPath": "github.com/dgrijalva/jwt-go",
+			"Comment": "v2.3.0-6-gf62f64e",
+			"Rev": "f62f64ea222e5e6d6d86421b5507b0862a3ebf7f"
+		},
+		{
 			"ImportPath": "github.com/gin-gonic/gin",
-			"Comment": "v1.0rc1-136-gfd5d429",
-			"Rev": "fd5d4294a5d5223d55fc76d7840f4b0ad91647bb"
+			"Comment": "v1.0rc1-148-g52fcc5d",
+			"Rev": "52fcc5dbf6e94df33ad313858fb94b713e9d1b4a"
 		},
 		{
 			"ImportPath": "github.com/golang/glog",
-			"Rev": "44145f04b68cf362d9c4df2182967c2275eaefed"
-		},
-		{
-			"ImportPath": "github.com/gorilla/context",
-			"Rev": "215affda49addc4c8ef7e2534915df2c8c35c6cd"
-		},
-		{
-			"ImportPath": "github.com/gorilla/securecookie",
-			"Rev": "aeade84400a85c6875264ae51c7a56ecdcb61751"
-		},
-		{
-			"ImportPath": "github.com/gorilla/sessions",
-			"Rev": "f61c3ec2cf65d69e7efedfd4d060fe128882c951"
-		},
-		{
-			"ImportPath": "github.com/jtolds/gls",
-			"Rev": "9a4a02dbe491bef4bab3c24fd9f3087d6c4c6690"
+			"Rev": "fca8c8854093a154ff1eb580aae10276ad6b1b5f"
 		},
 		{
 			"ImportPath": "github.com/manucorporat/sse",
@@ -45,27 +34,25 @@
 			"Rev": "40e4aedc8fabf8c23e040057540867186712faa5"
 		},
 		{
-			"ImportPath": "github.com/smartystreets/assertions",
-			"Comment": "1.5.0-380-g4727d76",
-			"Rev": "4727d767ce8a81811c40eedc2a836c85aebb4d09"
-		},
-		{
-			"ImportPath": "github.com/smartystreets/goconvey/convey",
-			"Comment": "1.5.0-390-g7a3785c",
-			"Rev": "7a3785c3002a330211525464d402c07b2afce5a7"
-		},
-		{
 			"ImportPath": "golang.org/x/net/context",
-			"Rev": "b71143c25f0aad5f54981684b715686d34c56d25"
+			"Rev": "c764672d0ee39ffd83cfcb375804d3181302b62b"
 		},
 		{
 			"ImportPath": "golang.org/x/oauth2",
-			"Rev": "8914e5017ca260f2a3a1575b1e6868874050d95e"
+			"Rev": "442624c9ec9243441e83b374a9e22ac549b5c51d"
+		},
+		{
+			"ImportPath": "google.golang.org/cloud/compute/metadata",
+			"Rev": "4bea1598a0936d6d116506b59a8e1aa962b585c3"
+		},
+		{
+			"ImportPath": "google.golang.org/cloud/internal",
+			"Rev": "4bea1598a0936d6d116506b59a8e1aa962b585c3"
 		},
 		{
 			"ImportPath": "gopkg.in/bluesuncorp/validator.v5",
-			"Comment": "v5.10.3",
-			"Rev": "77108103e5fd435ff31967e1a011fda801391c85"
+			"Comment": "v5.12",
+			"Rev": "d5acf1dac43705f8bfbb71d878e290e2bed3950b"
 		}
 	]
 }
