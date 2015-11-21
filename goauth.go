@@ -62,6 +62,8 @@ type Config struct {
 	TokenLife     time.Duration
 	FindSignKey   func() (string, interface{})
 	FindVerifyKey jwt.Keyfunc
+
+	HandleUserInfoFunc func(c *gin.Context, info *UserInfo) (gin.H, error)
 }
 
 func (config *Config) loadDefault() {
@@ -119,28 +121,44 @@ func jsGetPath(js *simplejson.Json, path string) *simplejson.Json {
 	return js.GetPath(strings.Split(path, ".")...)
 }
 
-func (config *Config) getAuthedUser(provider *Provider, c *gin.Context, tok *oauth2.Token) (OauthUser, error) {
-	// 1. Get user jsons
+func (config *Config) getUserInfo(provider *Provider, code string) (*UserInfo, error) {
+	// 1. Get token
+	tok, err := provider.Exchange(oauth2.NoContext, code)
+	if err != nil {
+		return nil, err
+	}
+	// 2. Get user jsons
 	jss, err := provider.GetAuthedUserJson(tok)
 	if err != nil {
 		return nil, err
 	}
-	// 2. Get user info
-	info, err := provider.ParseUserInfo(tok, jss)
-	if err != nil {
-		return nil, err
-	}
+	// 3. Get user info
+	return provider.ParseUserInfo(tok, jss, provider.Name)
+}
+
+func (config *Config) getAuthedUser(c *gin.Context, info *UserInfo) (OauthUser, error) {
 	expected := config.NewUserFunc()
 	// 3. Link to exist user if already authed
 	if u, ok := c.Get(config.GinUserKey); ok {
 		existed := u.(OauthUser)
-		if prd, eid := existed.GetOid(); prd == provider.Name && eid == info.Oid {
+		if prd, eid := existed.GetOid(); prd == info.Provider && eid == info.Oid {
 			return nil, ErrLinkSelf
 		}
-		return expected, expected.OnLink(existed, provider.Name, info.Oid, info.Name, info.Picture)
+		return expected, expected.OnLink(existed, info.Provider, info.Oid, info.Name, info.Picture)
 	}
 	// 4. Create a new user or return an existing one
-	return expected, expected.OnLogin(provider.Name, info.Oid, info.Name, info.Picture)
+	return expected, expected.OnLogin(info.Provider, info.Oid, info.Name, info.Picture)
+}
+
+func (config *Config) HandleUserInfo(c *gin.Context, info *UserInfo) (gin.H, error) {
+	user, err := config.getAuthedUser(c, info)
+	if err != nil {
+		return nil, err
+	}
+	if !user.Valid() {
+		return nil, ErrInvalideUser
+	}
+	return config.NewToken(user)
 }
 
 func (config *Config) authHandle(c *gin.Context) error {
@@ -163,19 +181,16 @@ func (config *Config) authHandle(c *gin.Context) error {
 		}
 		provider.RedirectURL = redirectUri
 	}
-	tok, err := provider.Exchange(oauth2.NoContext, code)
+	info, err := config.getUserInfo(&provider, code)
 	if err != nil {
 		return err
 	}
-	user, err := config.getAuthedUser(&provider, c, tok)
-	if err != nil {
-		return err
+	var token gin.H
+	if config.HandleUserInfoFunc != nil {
+		token, err = config.HandleUserInfoFunc(c, info)
+	} else {
+		token, err = config.HandleUserInfo(c, info)
 	}
-	if !user.Valid() {
-		return ErrInvalideUser
-	}
-
-	token, err := config.NewToken(user)
 	if err != nil {
 		return err
 	}

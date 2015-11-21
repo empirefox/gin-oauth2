@@ -22,10 +22,11 @@ func init() {
 
 type GetAuthedUserJson func(tok *oauth2.Token) (jss []*simplejson.Json, err error)
 
-type userInfo struct {
-	Oid     string
-	Name    string
-	Picture string
+type UserInfo struct {
+	Provider string
+	Oid      string
+	Name     string
+	Picture  string
 }
 
 // default redirect_uri is current page origin
@@ -121,8 +122,8 @@ func toString(i interface{}) string {
 	}
 }
 
-func (preset *ProviderPreset) ParseUserInfo(tok *oauth2.Token, jss []*simplejson.Json) (*userInfo, error) {
-	var info userInfo
+func (preset *ProviderPreset) ParseUserInfo(tok *oauth2.Token, jss []*simplejson.Json, prd string) (*UserInfo, error) {
+	var info UserInfo
 	if len(jss) != 0 {
 		// retrive from jsons of endpoint
 		mapping := parseMapping(nil, jss)
@@ -163,6 +164,7 @@ func (preset *ProviderPreset) ParseUserInfo(tok *oauth2.Token, jss []*simplejson
 	if info.Oid == "" {
 		return nil, ErrJsonFmt
 	}
+	info.Provider = prd
 	return &info, nil
 }
 
