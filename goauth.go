@@ -63,7 +63,7 @@ type Config struct {
 	FindSignKey   func() (string, interface{})
 	FindVerifyKey jwt.Keyfunc
 
-	HandleUserInfoFunc func(c *gin.Context, info *UserInfo) (gin.H, error)
+	HandleUserInfoFunc func(c *gin.Context, info *UserInfo) error
 }
 
 func (config *Config) loadDefault() {
@@ -150,15 +150,20 @@ func (config *Config) getAuthedUser(c *gin.Context, info *UserInfo) (OauthUser, 
 	return expected, expected.OnLogin(info.Provider, info.Oid, info.Name, info.Picture)
 }
 
-func (config *Config) HandleUserInfo(c *gin.Context, info *UserInfo) (gin.H, error) {
+func (config *Config) HandleUserInfo(c *gin.Context, info *UserInfo) error {
 	user, err := config.getAuthedUser(c, info)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if !user.Valid() {
-		return nil, ErrInvalideUser
+		return ErrInvalideUser
 	}
-	return config.NewToken(user)
+	token, err := config.NewToken(user)
+	if err != nil {
+		return err
+	}
+	c.JSON(http.StatusOK, token)
+	return nil
 }
 
 func (config *Config) authHandle(c *gin.Context) error {
@@ -185,17 +190,11 @@ func (config *Config) authHandle(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	var token gin.H
 	if config.HandleUserInfoFunc != nil {
-		token, err = config.HandleUserInfoFunc(c, info)
+		return config.HandleUserInfoFunc(c, info)
 	} else {
-		token, err = config.HandleUserInfo(c, info)
+		return config.HandleUserInfo(c, info)
 	}
-	if err != nil {
-		return err
-	}
-	c.JSON(http.StatusOK, token)
-	return nil
 }
 
 // Middleware proccess Login related logic.
