@@ -21,8 +21,8 @@ var (
 	ErrNoKid         = errors.New("Kid not found")
 	ErrLinkSelf      = errors.New("There is already a same account that belongs to you")
 	ErrFindUser      = errors.New("Cannot find user")
-	ErrInvalideUser  = errors.New("User is invalide")
-	ErrInvalideToken = errors.New("Token is invalide")
+	ErrInvalideUser  = errors.New("User is invalid")
+	ErrInvalideToken = errors.New("Token is invalid")
 )
 
 type OauthUser interface {
@@ -213,10 +213,6 @@ func Middleware(config *Config) gin.HandlerFunc {
 
 		if _, ok := config.Providers[c.Request.URL.Path]; ok && c.Request.Method == "POST" {
 			config.BindUser(c)
-			if _, ok := c.Get("invalide-user"); ok {
-				c.AbortWithStatus(http.StatusForbidden)
-				return
-			}
 			if err := config.authHandle(c); err != nil {
 				c.AbortWithError(http.StatusUnauthorized, err)
 			}
@@ -322,7 +318,6 @@ func (config *Config) BindUser(c *gin.Context) {
 		return
 	}
 	if !u.Valid() {
-		c.Set("invalide-user", u)
 		return
 	}
 	c.Set(config.GinUserKey, u)
