@@ -132,6 +132,7 @@ func TestMiddleware(t *testing.T) {
 
 	res := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/secure", nil)
+	// {"alg":"HS256","typ":"JWT"}{"oid":"OAUTH_ID","prd":"github2"}
 	req.Header.Set("Authorization", "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJvaWQiOiJPQVVUSF9JRCIsInByZCI6ImdpdGh1YjIifQ.c33cisU8gp_i2G2U7oUI0pRxFRLRkxy0667VjkX2mi4")
 	r.ServeHTTP(res, req)
 	if res.Code == http.StatusOK {
@@ -143,6 +144,7 @@ func TestMiddleware(t *testing.T) {
 
 	res = httptest.NewRecorder()
 	req, _ = http.NewRequest("GET", "/secure", nil)
+	// {"alg":"HS256","typ":"JWT"}{"oid":"OAUTH_ID","prd":"github"}
 	req.Header.Set("Authorization", "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJvaWQiOiJPQVVUSF9JRCIsInByZCI6ImdpdGh1YiJ9.c33cisU8gp_i2G2U7oUI0pRxFRLRkxy0667VjkX2mi4")
 	r.ServeHTTP(res, req)
 	if res.Code != http.StatusOK {
@@ -151,7 +153,7 @@ func TestMiddleware(t *testing.T) {
 	if u == nil {
 		t.Errorf("Authed request should be accepted")
 	}
-	if u.Provider != "github2" || u.Oid != "OAUTH_ID" {
+	if u.Provider != "github" || u.Oid != "OAUTH_ID" {
 		t.Errorf("Claims should contain correct info, but got:%v", u)
 	}
 }

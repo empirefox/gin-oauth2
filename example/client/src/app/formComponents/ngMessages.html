@@ -1,0 +1,8 @@
+<p *ngIf="error" [ngSwitch]="error" class="text-danger help-block">
+  <template ngSwitchWhen="required">Required</template>
+  <template ngSwitchWhen="email">Invalid email address</template>
+  <template ngSwitchWhen="minlength">Too short</template>
+  <template ngSwitchWhen="maxlength">Too long</template>
+  <template ngSwitchWhen="passwordMatch">Passwords don&apos;t match</template>
+  <template ngSwitchDefault>Validation error</template>
+</p>

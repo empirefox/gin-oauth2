@@ -342,3 +342,12 @@ func (config *Config) MustBindUser(c *gin.Context) {
 	}
 	c.Set(config.GinUserKey, u)
 }
+
+func (config *Config) GetUser(c *gin.Context) (u OauthUser, ok bool) {
+	iu, found := c.Keys[config.GinUserKey]
+	if !found {
+		return
+	}
+	u, ok = iu.(OauthUser)
+	return
+}
