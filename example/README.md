@@ -15,4 +15,4 @@
 ```
 npm i & npm start
 ```
-1. browser http://127.0.0.1:3000
+1. browser http://localhost:3000
