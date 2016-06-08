@@ -50,7 +50,7 @@ func main() {
 	storage.SetClient("1234", &osin.DefaultClient{
 		Id:          "1234",
 		Secret:      "aabbccdd",
-		RedirectUri: "http://127.0.0.1:3000",
+		RedirectUri: "http://localhost:3000",
 	})
 
 	server := osin.NewServer(cfg, storage)

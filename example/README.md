@@ -7,10 +7,12 @@
 - oauth-server(mock server) is on port 14000
 
 -----
-1. run the 2 servers
+1. run api server, need set env FB_CLIENT_ID and FB_CLIENT_SECRET
 
-2. run client using
+1. run oauth mock server(skip if no need for sign in with mock)
+
+1. run client using
 ```
 npm i & npm start
 ```
-3. browser http://127.0.0.1:3000
+1. browser http://127.0.0.1:3000

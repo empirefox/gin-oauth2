@@ -6,10 +6,13 @@ import {Main} from './main/main';
 import {NG2_UI_AUTH_PROVIDERS} from 'ng2-ui-auth';
 import {IOauth2Options} from 'ng2-ui-auth/declerations/config';
 
+// from http://127.0.0.1:9999/clientids.js index.html
+declare var ClientIds: Dict<string>;
+
 const MOCK_PROVIDER: IOauth2Options = {
-  clientId: '1234',
+  clientId: ClientIds['mock'],
   name: 'mock',
-  url: 'http://127.0.0.1:9999/auth/mock',
+  url: '/auth/mock',
   authorizationEndpoint: 'http://127.0.0.1:14000/authorize',
   redirectUri: window.location.origin,
   requiredUrlParams: ['state'],
@@ -17,11 +20,19 @@ const MOCK_PROVIDER: IOauth2Options = {
   type: '2.0'
 }
 
+// add facebook support
+const FACEBOOK_PROVIDER: IOauth2Options = {
+  clientId: ClientIds['facebook']
+}
+
 @Component({
   selector: 'app',
   providers: [
     provide(ROUTER_PRIMARY_COMPONENT, { useFactory: () => App }),
-    NG2_UI_AUTH_PROVIDERS({ providers: { mock: MOCK_PROVIDER } }),
+    NG2_UI_AUTH_PROVIDERS({
+      baseUrl: 'http://127.0.0.1:9999',
+      providers: { mock: MOCK_PROVIDER, facebook: FACEBOOK_PROVIDER }
+    }),
   ],
   template: '<router-outlet></router-outlet>',
   directives: [Login, ROUTER_DIRECTIVES]
