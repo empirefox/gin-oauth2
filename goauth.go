@@ -11,6 +11,7 @@ import (
 	"github.com/bitly/go-simplejson"
 	"github.com/dchest/uniuri"
 	"github.com/dgrijalva/jwt-go"
+	"github.com/dgrijalva/jwt-go/request"
 	"github.com/gin-gonic/gin"
 	"github.com/golang/glog"
 	"golang.org/x/oauth2"
@@ -206,7 +207,7 @@ func Middleware(config *Config) gin.HandlerFunc {
 	config.loadDefault()
 
 	return func(c *gin.Context) {
-		token, err := jwt.ParseFromRequest(c.Request, config.FindVerifyKey)
+		token, err := request.ParseFromRequest(c.Request, request.OAuth2Extractor, config.FindVerifyKey)
 		if err == nil && token.Valid {
 			c.Set(config.GinClaimsKey, token.Claims)
 		}
@@ -262,9 +263,9 @@ func (config *Config) NewToken(u OauthUser) (gin.H, error) {
 	kid, signKey := config.FindSignKey()
 	token := jwt.New(jwt.GetSigningMethod(config.SignAlg))
 	token.Header["kid"] = kid
-	token.Claims["prd"] = prd
-	token.Claims["oid"] = oid
-	token.Claims["exp"] = time.Now().Add(config.TokenLife).Unix()
+	token.Claims.(jwt.MapClaims)["prd"] = prd
+	token.Claims.(jwt.MapClaims)["oid"] = oid
+	token.Claims.(jwt.MapClaims)["exp"] = time.Now().Add(config.TokenLife).Unix()
 	tokenString, err := token.SignedString(signKey)
 	if err != nil {
 		glog.Infoln("Sign token err:", err)
@@ -273,7 +274,7 @@ func (config *Config) NewToken(u OauthUser) (gin.H, error) {
 	return gin.H{"token": tokenString, "user": u.Info()}, nil
 }
 
-func (config *Config) retrieveUser(user OauthUser, claims map[string]interface{}) error {
+func (config *Config) retrieveUser(user OauthUser, claims jwt.MapClaims) error {
 	prd, ok1 := claims["prd"].(string)
 	oid, ok2 := claims["oid"].(string)
 	if !ok1 || !ok2 {
@@ -285,12 +286,12 @@ func (config *Config) retrieveUser(user OauthUser, claims map[string]interface{}
 	return nil
 }
 
-func (config *Config) retrieveClaims(c *gin.Context) (claims map[string]interface{}, ok bool) {
+func (config *Config) retrieveClaims(c *gin.Context) (claims jwt.MapClaims, ok bool) {
 	obj, exist := c.Get(config.GinClaimsKey)
 	if !exist {
 		return nil, false
 	}
-	claims, ok = obj.(map[string]interface{})
+	claims, ok = obj.(jwt.MapClaims)
 	return
 }
 
@@ -304,7 +305,7 @@ func (config *Config) Verify(user OauthUser, token []byte) error {
 	if !t.Valid {
 		return ErrInvalideToken
 	}
-	return config.retrieveUser(user, t.Claims)
+	return config.retrieveUser(user, t.Claims.(jwt.MapClaims))
 }
 
 // BindUser silently bind token to user. Combined with Middleware.
